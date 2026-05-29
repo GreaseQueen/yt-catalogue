@@ -294,9 +294,7 @@ label{font-size:11px;color:#666;display:block;margin-bottom:4px;text-transform:u
 </div>
 </div>
 
-<script type="module">
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/+esm';
-window._sbReady = createClient;
+<script>
 var SUPA_URL = "https://fevtyuxpkfxrjhnqhkqd.supabase.co";
 var SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZldnR5dXhwa2Z4cmpobnFoa3FkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NTg5NDIsImV4cCI6MjA5NTUzNDk0Mn0.LoMvma9AsUUcetkCP38sSKC3FDAEvMr7EV4V4ueQg1s";
 var RATINGS = ["\ud83d\udc4d", "\ud83d\udc4e", "\ud83e\udd20", "\ud83d\ude0e", "\ud83d\ude41\ud83d\udd2b", "\ud83d\ude2b", "\ud83c\udd71\ufe0f\ud83c\udd7e\ufe0f\ud83c\udd7e\ufe0f", "\u26a1", "\ud83c\udf08", "\ud83c\udfb6", "\ud83d\uded2", "\ud83e\ude88", "\ud83c\udfa8", "\ud83d\ude42", "\ud83e\udd13", "Fuck you", "yeah it's good", "yeah it wasn't bad", "booooooooo. boo.", "GO WOKE, GO BROKE", "Too easy, piece of cake!", "good it's a good video it's quite good", "yeah you could put this on while you eat lunch and be satisfied", "ugh", "wegh", "it was alright", "neat", "eghh. Semi irony watch.", "Background noise", "...huh?", "party rock is in the house tonight", "\ud83d\ude4f", "yeah!", "...", "I screamed out loud"];
@@ -308,7 +306,24 @@ var SEED = {"entries": [{"title": "What Super Mario Galaxy and The Holocaust can
 var YT_KEY = 'AIzaSyAV13R9a-P6bk85qpbqxFGT7a5EEDTnK0c';
 
 // Init Supabase
-var sb = createClient(SUPA_URL, SUPA_KEY);
+// Raw Supabase REST API helpers - no SDK needed
+async function sbFetch(method, path, body){
+  var opts={method:method,headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+(currentToken||SUPA_KEY),'Content-Type':'application/json','Prefer':'return=representation'}};
+  if(body)opts.body=JSON.stringify(body);
+  var res=await fetch(SUPA_URL+'/rest/v1/'+path,opts);
+  var text=await res.text();
+  try{return{data:text?JSON.parse(text):null,error:res.ok?null:{message:text}};}
+  catch(e){return{data:null,error:{message:text}};}
+}
+async function sbAuth(method,path,body){
+  var opts={method:method,headers:{'apikey':SUPA_KEY,'Content-Type':'application/json'}};
+  if(body)opts.body=JSON.stringify(body);
+  var res=await fetch(SUPA_URL+'/auth/v1/'+path,opts);
+  var text=await res.text();
+  try{return JSON.parse(text);}catch(e){return null;}
+}
+var currentToken=null;
+var currentUser=null;
 var currentUser = null;
 
 // In-memory state
@@ -323,34 +338,42 @@ var _seeded=false;
 // ── AUTH ─────────────────────────────────────────────────────────────────────
 function signIn(){
   document.getElementById('auth-msg').textContent='Redirecting to Google...';
-  sb.auth.signInWithOAuth({
-    provider:'google',
-    options:{redirectTo:window.location.href}
-  });
+  window.location.href=SUPA_URL+'/auth/v1/authorize?provider=google&redirect_to='+encodeURIComponent(window.location.href.split('#')[0]);
 }
 
 async function signOut(){
-  await sb.auth.signOut();
+  await fetch(SUPA_URL+'/auth/v1/logout',{method:'POST',headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+currentToken}});
+  currentToken=null;currentUser=null;
+  localStorage.removeItem('sb_token');
   location.reload();
 }
 
 async function initAuth(){
-  var sess=await sb.auth.getSession();
-  if(sess.data.session){
-    currentUser=sess.data.session.user;
-    showApp();
-    await loadAllData();
-  } else {
-    document.getElementById('auth-screen').style.display='flex';
-  }
-  sb.auth.onAuthStateChange(function(event,session){
-    if(event==='SIGNED_IN'&&session&&!currentUser){
-      currentUser=session.user;
-      showApp();
-      loadAllData();
+  // Check for token in URL hash (after OAuth redirect)
+  var hash=window.location.hash;
+  if(hash&&hash.includes('access_token')){
+    var params=new URLSearchParams(hash.slice(1));
+    var token=params.get('access_token');
+    if(token){
+      localStorage.setItem('sb_token',token);
+      history.replaceState(null,'',window.location.pathname+window.location.search);
     }
-    if(event==='SIGNED_OUT'){currentUser=null;location.reload();}
-  });
+  }
+  // Check stored token
+  var stored=localStorage.getItem('sb_token');
+  if(stored){
+    var res=await fetch(SUPA_URL+'/auth/v1/user',{headers:{'apikey':SUPA_KEY,'Authorization':'Bearer '+stored}});
+    if(res.ok){
+      currentToken=stored;
+      currentUser=await res.json();
+      showApp();
+      await loadAllData();
+      return;
+    } else {
+      localStorage.removeItem('sb_token');
+    }
+  }
+  document.getElementById('auth-screen').style.display='flex';
 }
 
 function showApp(){
@@ -377,20 +400,20 @@ function showErr(msg){
 function uid(){return currentUser&&currentUser.id;}
 
 async function dbUpsert(table,row){
-  var r=await sb.from(table).upsert(row,{onConflict:'id'});
+  var r=await sbFetch('POST',table+'?on_conflict=id',row);
   if(r.error)showErr(r.error.message);
   else showSaved();
   return !r.error;
 }
 
 async function dbDelete(table,id){
-  var r=await sb.from(table).delete().eq('id',id).eq('user_id',uid());
+  var r=await sbFetch('DELETE',table+'?id=eq.'+id+'&user_id=eq.'+uid(),null);
   if(r.error)showErr(r.error.message);
   return !r.error;
 }
 
 async function dbLoad(table){
-  var r=await sb.from(table).select('*').eq('user_id',uid());
+  var r=await sbFetch('GET',table+'?user_id=eq.'+uid()+'&limit=10000',null);
   if(r.error){console.error(r.error);return [];}
   return r.data||[];
 }
@@ -408,7 +431,7 @@ async function loadAllData(){
     dbLoad('series'),
     dbLoad('history_items'),
     dbLoad('channels'),
-    sb.from('user_prefs').select('*').eq('user_id',uid_val).maybeSingle()
+    sbFetch('GET','user_prefs?user_id=eq.'+uid_val+'&limit=1',null)
   ]);
 
   var rawEntries=results[0];
@@ -417,7 +440,7 @@ async function loadAllData(){
   series=results[3];
   var rawHist=results[4];
   var rawChannels=results[5];
-  var prefs=results[6].data;
+  var prefsArr=results[6].data||[];var prefs=prefsArr[0]||null;
 
   // Convert from DB format
   entries=rawEntries.map(function(r){return {
@@ -473,8 +496,8 @@ async function seedAll(){
   async function insertChunks(table,rows,size){
     for(var i=0;i<rows.length;i+=size){
       var chunk=rows.slice(i,i+size);
-      var r=await sb.from(table).insert(chunk);
-      if(r.error)console.error(table,r.error);
+      var r=await sbFetch('POST',table,chunk);
+      if(r.error)console.error(table,r.error.message);
     }
   }
 
@@ -486,7 +509,7 @@ async function seedAll(){
   await insertChunks('series',seriesRows,10);
 
   // Save prefs
-  await sb.from('user_prefs').upsert({user_id:u,cats:DEFAULT_CATS,tags:[]});
+  await sbFetch('POST','user_prefs?on_conflict=user_id',{user_id:u,cats:DEFAULT_CATS,tags:[]});
 
   await loadAllData();
 }
@@ -499,7 +522,7 @@ function exportData(){
 
 // ── SAVE PREFS ────────────────────────────────────────────────────────────────
 async function savePrefs(){
-  await sb.from('user_prefs').upsert({user_id:uid(),cats:cats,tags:tags,updated_at:new Date().toISOString()});
+  await sbFetch('POST','user_prefs?on_conflict=user_id',{user_id:uid(),cats:cats,tags:tags,updated_at:new Date().toISOString()});
 }
 
 // ── CATEGORIES & TAGS ─────────────────────────────────────────────────────────
@@ -667,12 +690,12 @@ function renderCards(){
 async function likeToggle(id,val){
   var e=entries.find(function(x){return x.id===id;});if(!e)return;
   e.liked=e.liked===val?null:val;
-  await sb.from('entries').update({liked:e.liked}).eq('id',id).eq('user_id',uid());
+  await sbFetch('PATCH','entries?id=eq.'+id+'&user_id=eq.'+uid(),{liked:e.liked});
   renderCards();
 }
 
 function cardHTML(e){
-  var thumb=e.thumb?'<div class="thumb"><img src="'+e.thumb+'" onerror="this.parentElement.textContent='&#9654;'"></div>':'<div class="thumb">&#9654;</div>';
+  var thumb=e.thumb?'<div class="thumb"><img src="'+e.thumb+'" onerror="this.parentElement.textContent=String.fromCodePoint(9654)"></div>':'<div class="thumb">&#9654;</div>';
   var title=e.url?'<a class="ct" href="'+e.url+'" target="_blank">'+e.title+'</a>':'<span class="ct">'+e.title+'</span>';
   var tagHtml=(e.tags&&e.tags.length)?'<div class="ctags">'+e.tags.map(function(t){return '<span class="tbadge">'+t+'</span>';}).join('')+'</div>':'';
   var lo=e.liked===true?' on':'';var dlo=e.liked===false?' on':'';
@@ -789,19 +812,19 @@ async function addEp(sid){
   var s=series.find(function(x){return x.id===sid;});if(!s)return;
   if(!s.episodes)s.episodes=[];
   s.episodes.push({id:Date.now(),title:t.value.trim(),url:u?u.value.trim():'',note:''});
-  await sb.from('series').update({episodes:s.episodes}).eq('id',sid).eq('user_id',uid());
+  await sbFetch('PATCH','series?id=eq.'+sid+'&user_id=eq.'+uid(),{episodes:s.episodes});
   t.value='';if(u)u.value='';renderSeries();
   setTimeout(function(){var el=document.getElementById('eps-'+sid);if(el)el.style.display='block';},50);
 }
 async function delEp(sid,eid){
   var s=series.find(function(x){return x.id===sid;});if(!s)return;
   s.episodes=(s.episodes||[]).filter(function(e){return e.id!==eid;});
-  await sb.from('series').update({episodes:s.episodes}).eq('id',sid).eq('user_id',uid());
+  await sbFetch('PATCH','series?id=eq.'+sid+'&user_id=eq.'+uid(),{episodes:s.episodes});
   renderSeries();setTimeout(function(){var el=document.getElementById('eps-'+sid);if(el)el.style.display='block';},50);
 }
 async function saveEpNote(sid,eid,val){
   var s=series.find(function(x){return x.id===sid;});if(!s)return;
-  var ep=(s.episodes||[]).find(function(e){return e.id===eid;});if(ep){ep.note=val;await sb.from('series').update({episodes:s.episodes}).eq('id',sid).eq('user_id',uid());}
+  var ep=(s.episodes||[]).find(function(e){return e.id===eid;});if(ep){ep.note=val;await sbFetch('PATCH','series?id=eq.'+sid+'&user_id=eq.'+uid(),{episodes:s.episodes});}
 }
 function renderSeries(){
   renderStats();var con=document.getElementById('series-container');
@@ -838,7 +861,7 @@ function hToAdd(id){var h=histItems.find(function(x){return x.id===id;});if(!h)r
 async function hDismiss(id){
   var h=histItems.find(function(x){return x.id===id;});if(!h)return;
   h.done=!h.done;
-  await sb.from('history_items').update({done:h.done}).eq('id',id).eq('user_id',uid());
+  await sbFetch('PATCH','history_items?id=eq.'+id+'&user_id=eq.'+uid(),{done:h.done});
   renderHistory();
 }
 
