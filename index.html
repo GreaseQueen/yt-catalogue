@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>YouTube Catalogue</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.js"></script>
+
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0f0f0f;color:#e8e8e8}
@@ -294,7 +294,9 @@ label{font-size:11px;color:#666;display:block;margin-bottom:4px;text-transform:u
 </div>
 </div>
 
-<script>
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/+esm';
+window._sbReady = createClient;
 var SUPA_URL = "https://fevtyuxpkfxrjhnqhkqd.supabase.co";
 var SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZldnR5dXhwa2Z4cmpobnFoa3FkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NTg5NDIsImV4cCI6MjA5NTUzNDk0Mn0.LoMvma9AsUUcetkCP38sSKC3FDAEvMr7EV4V4ueQg1s";
 var RATINGS = ["\ud83d\udc4d", "\ud83d\udc4e", "\ud83e\udd20", "\ud83d\ude0e", "\ud83d\ude41\ud83d\udd2b", "\ud83d\ude2b", "\ud83c\udd71\ufe0f\ud83c\udd7e\ufe0f\ud83c\udd7e\ufe0f", "\u26a1", "\ud83c\udf08", "\ud83c\udfb6", "\ud83d\uded2", "\ud83e\ude88", "\ud83c\udfa8", "\ud83d\ude42", "\ud83e\udd13", "Fuck you", "yeah it's good", "yeah it wasn't bad", "booooooooo. boo.", "GO WOKE, GO BROKE", "Too easy, piece of cake!", "good it's a good video it's quite good", "yeah you could put this on while you eat lunch and be satisfied", "ugh", "wegh", "it was alright", "neat", "eghh. Semi irony watch.", "Background noise", "...huh?", "party rock is in the house tonight", "\ud83d\ude4f", "yeah!", "...", "I screamed out loud"];
@@ -306,7 +308,7 @@ var SEED = {"entries": [{"title": "What Super Mario Galaxy and The Holocaust can
 var YT_KEY = 'AIzaSyAV13R9a-P6bk85qpbqxFGT7a5EEDTnK0c';
 
 // Init Supabase
-var sb = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+var sb = createClient(SUPA_URL, SUPA_KEY);
 var currentUser = null;
 
 // In-memory state
@@ -941,6 +943,23 @@ function switchTab(name){
   if(name==='other')renderRipoffs();
 }
 
+// Expose all onclick handlers to global scope (required for type="module")
+window.signIn=signIn;window.signOut=signOut;
+window.switchTab=switchTab;window.setCat=setCat;window.setTagFilter=setTagFilter;
+window.fetchMeta=fetchMeta;window.fetchPlaylist=fetchPlaylist;window.fetchChannel=fetchChannel;
+window.clearForm=clearForm;window.saveEntry=saveEntry;window.editEntry=editEntry;window.deleteEntry=deleteEntry;
+window.likeToggle=likeToggle;window.setRating=setRating;window.setSRating=setSRating;
+window.handleRChip=handleRChip;window.customRDialog=customRDialog;
+window.toggleNewCat=toggleNewCat;window.confirmNewCat=confirmNewCat;
+window.toggleNewTag=toggleNewTag;window.confirmNewTag=confirmNewTag;
+window.handleTagChip=handleTagChip;window.renderCards=renderCards;window.renderHistory=renderHistory;window.renderChannels=renderChannels;
+window.addTodo=addTodo;window.delTodo=delTodo;window.promoteReview=promoteReview;
+window.saveSeries=saveSeries;window.editSeries=editSeries;window.deleteSeries=deleteSeries;
+window.clearSeriesForm=clearSeriesForm;window.toggleEps=toggleEps;window.addEp=addEp;window.delEp=delEp;window.saveEpNote=saveEpNote;
+window.saveChannel=saveChannel;window.deleteChannel=deleteChannel;window.clearChForm=clearChForm;window.toggleChVids=toggleChVids;
+window.saveRipoff=saveRipoff;window.editRipoff=editRipoff;window.delRipoff=delRipoff;window.clearRipoffForm=clearRipoffForm;window.selectCarpet=selectCarpet;
+window.exportData=exportData;window.hToTodo=hToTodo;window.hToAdd=hToAdd;window.hDismiss=hDismiss;
+window.histHTML=histHTML;window.toggleChVids=toggleChVids;
 initAuth();
 
 </script>
