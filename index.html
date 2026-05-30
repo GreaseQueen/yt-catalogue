@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>YouTube Catalogue</title>
+<title>ReviewTube</title>
 
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -132,7 +132,7 @@ label{font-size:11px;color:#666;display:block;margin-bottom:4px;text-transform:u
 
 <div id="auth-screen">
   <div class="auth-box">
-    <h2>&#128252; YouTube Catalogue</h2>
+    <h2>&#128252; ReviewTube</h2>
     <p>Sign in to access your catalogue from any device.</p>
     <button class="btn primary" onclick="signIn()">&#128100; Sign in with Google</button>
     <div style="margin-top:1rem;font-size:12px;color:#555" id="auth-msg"></div>
@@ -144,7 +144,7 @@ label{font-size:11px;color:#666;display:block;margin-bottom:4px;text-transform:u
 
 <div class="app" id="main-app" style="display:none">
 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
-  <h1 style="margin:0">&#128252; YouTube Catalogue</h1>
+  <h1 style="margin:0">&#128252; ReviewTube</h1>
   <button class="btn sm" onclick="signOut()">Sign out</button>
 </div>
 <div class="tab-row">
@@ -389,6 +389,11 @@ function showSaved(){
   clearTimeout(_saveTimer);
   _saveTimer=setTimeout(function(){el.style.display='none';},2000);
 }
+function esc(str){
+  if(!str)return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 function showErr(msg){
   var el=document.getElementById('err-indicator');
   el.textContent='&#10005; '+(msg||'Save failed');
@@ -399,8 +404,13 @@ function showErr(msg){
 // ── SUPABASE HELPERS ─────────────────────────────────────────────────────────
 function uid(){return currentUser&&currentUser.id;}
 
-async function dbUpsert(table,row){
-  var r=await sbFetch('POST',table+'?on_conflict=id',row);
+async function dbUpsert(table,row,isEdit){
+  var r;
+  if(isEdit){
+    r=await sbFetch('PATCH',table+'?id=eq.'+row.id+'&user_id=eq.'+row.user_id,row);
+  } else {
+    r=await sbFetch('POST',table,row);
+  }
   if(r.error)showErr(r.error.message);
   else showSaved();
   return !r.error;
@@ -517,12 +527,18 @@ async function seedAll(){
 // ── EXPORT ────────────────────────────────────────────────────────────────────
 function exportData(){
   var blob=new Blob([JSON.stringify({entries:entries,todos:todos,ripoffs:ripoffs,series:series,histItems:histItems,channels:channels,cats:cats,tags:tags},null,2)],{type:'application/json'});
-  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='yt-catalogue-backup.json';a.click();
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='reviewtube-backup.json';a.click();
 }
 
 // ── SAVE PREFS ────────────────────────────────────────────────────────────────
 async function savePrefs(){
-  await sbFetch('POST','user_prefs?on_conflict=user_id',{user_id:uid(),cats:cats,tags:tags,updated_at:new Date().toISOString()});
+  var body={user_id:uid(),cats:cats,tags:tags,updated_at:new Date().toISOString()};
+  var check=await sbFetch('GET','user_prefs?user_id=eq.'+uid()+'&limit=1',null);
+  if(check.data&&check.data.length>0){
+    await sbFetch('PATCH','user_prefs?user_id=eq.'+uid(),body);
+  } else {
+    await sbFetch('POST','user_prefs',body);
+  }
 }
 
 // ── CATEGORIES & TAGS ─────────────────────────────────────────────────────────
@@ -695,12 +711,12 @@ async function likeToggle(id,val){
 }
 
 function cardHTML(e){
-  var thumb=e.thumb?'<div class="thumb"><img src="'+e.thumb+'" onerror="this.parentElement.textContent=String.fromCodePoint(9654)"></div>':'<div class="thumb">&#9654;</div>';
-  var title=e.url?'<a class="ct" href="'+e.url+'" target="_blank">'+e.title+'</a>':'<span class="ct">'+e.title+'</span>';
-  var tagHtml=(e.tags&&e.tags.length)?'<div class="ctags">'+e.tags.map(function(t){return '<span class="tbadge">'+t+'</span>';}).join('')+'</div>':'';
+  var thumb=e.thumb?'<div class="thumb"><img src="'+esc(e.thumb)+'" onerror="this.parentElement.textContent=String.fromCodePoint(9654)"></div>':'<div class="thumb">&#9654;</div>';
+  var title=e.url?'<a class="ct" href="'+esc(e.url)+'" target="_blank">'+esc(e.title)+'</a>':'<span class="ct">'+esc(e.title)+'</span>';
+  var tagHtml=(e.tags&&e.tags.length)?'<div class="ctags">'+e.tags.map(function(t){return '<span class="tbadge">'+esc(t)+'</span>';}).join('')+'</div>':'';
   var lo=e.liked===true?' on':'';var dlo=e.liked===false?' on':'';
   var reviewedStr=e.reviewedAt?(' · <span style="color:#444">reviewed '+new Date(e.reviewedAt).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})+'</span>'):'';
-  return '<div class="card"><div class="card-top">'+thumb+'<div class="ci">'+title+'<div class="cm">'+(e.channel||'')+(e.published?' · '+e.published:'')+reviewedStr+'</div>'+(e.rating?'<span class="cr">'+e.rating+'</span>':'')+tagHtml+'</div></div>'+(e.review?'<div class="crv">'+e.review+'</div>':'')+'<div class="ca"><button class="lbtn'+lo+'" onclick="likeToggle('+e.id+',true)">&#128077;</button><button class="dlbtn'+dlo+'" onclick="likeToggle('+e.id+',false)">&#128078;</button><button class="btn sm" onclick="editEntry('+e.id+')">&#9999; Edit</button><button class="btn sm danger" onclick="deleteEntry('+e.id+')">&#10005; Delete</button></div></div>';
+  return '<div class="card"><div class="card-top">'+thumb+'<div class="ci">'+title+'<div class="cm">'+esc(e.channel||'')+(e.published?' · '+esc(e.published):'')+reviewedStr+'</div>'+(e.rating?'<span class="cr">'+esc(e.rating)+'</span>':'')+tagHtml+'</div></div>'+(e.review?'<div class="crv">'+esc(e.review)+'</div>':'')+'<div class="ca"><button class="lbtn'+lo+'" onclick="likeToggle('+e.id+',true)">&#128077;</button><button class="dlbtn'+dlo+'" onclick="likeToggle('+e.id+',false)">&#128078;</button><button class="btn sm" onclick="editEntry('+e.id+')">&#9999; Edit</button><button class="btn sm danger" onclick="deleteEntry('+e.id+')">&#10005; Delete</button></div></div>';
 }
 
 function renderRGrid(id,curOverride){
@@ -760,7 +776,7 @@ async function saveEntry(){
     liked:existing?existing.liked:null,
     reviewed_at:(_editId&&existing&&existing.reviewedAt)?existing.reviewedAt:now
   };
-  var ok=await dbUpsert('entries',row);
+  var ok=await dbUpsert('entries',row,!!_editId);
   btn.disabled=false;btn.textContent='Save entry';
   if(!ok)return;
   var entry=Object.assign({},row,{desc:row.description,reviewedAt:row.reviewed_at});
@@ -796,7 +812,7 @@ async function saveSeries(){
   var existing=_seriesId?series.find(function(x){return x.id===_seriesId;}):null;
   var eps=window._pendingEps||(existing?existing.episodes:[]);
   var row={id:_seriesId||Date.now(),user_id:uid(),title:title,channel:document.getElementById('s-channel').value.trim(),cat:document.getElementById('s-cat').value,year:document.getElementById('s-year').value,rating:_seriesRating,review:document.getElementById('s-review').value.trim(),playlist_url:document.getElementById('s-playlist-url').value.trim(),episodes:eps};
-  var ok=await dbUpsert('series',row);
+  var ok=await dbUpsert('series',row,!!_seriesId);
   if(!ok)return;
   if(_seriesId)series=series.map(function(s){return s.id===_seriesId?row:s;});else series.unshift(row);
   clearSeriesForm();document.getElementById('s-save-status').textContent='Saved!';renderSeries();
@@ -854,7 +870,7 @@ function histHTML(h){
 async function hToTodo(id){
   var h=histItems.find(function(x){return x.id===id;});if(!h)return;
   var row={id:Date.now(),user_id:uid(),title:h.title,channel:h.channel,url:h.url};
-  var ok=await dbUpsert('todos',row);
+  var ok=await dbUpsert('todos',row,false);
   if(ok){todos.push(row);renderTodos();renderStats();hDismiss(id);}
 }
 function hToAdd(id){var h=histItems.find(function(x){return x.id===id;});if(!h)return;switchTab('add');document.getElementById('f-title').value=h.title;document.getElementById('f-channel').value=h.channel;document.getElementById('url-input').value=h.url;_url=h.url;var vid=extractVid(h.url);if(vid)_thumb='https://img.youtube.com/vi/'+vid+'/mqdefault.jpg';hDismiss(id);}
@@ -870,7 +886,7 @@ function clearChForm(){['ch-url-input','ch-name-input','ch-notes-input'].forEach
 async function saveChannel(){
   var name=document.getElementById('ch-name-input').value.trim();if(!name){document.getElementById('ch-save-status').textContent='Please enter a name.';return;}
   var row={id:_chId||Date.now(),user_id:uid(),name:name,url:document.getElementById('ch-url-input').value.trim(),notes:document.getElementById('ch-notes-input').value.trim(),avatar:_chAvatar||'',descr:_chDesc||'',watches:0,from_subs:false,from_history:false};
-  var ok=await dbUpsert('channels',row);
+  var ok=await dbUpsert('channels',row,!!_chId);
   if(!ok)return;
   var ch=Object.assign({},row,{desc:row.descr});
   if(_chId)channels=channels.map(function(c){return c.id===_chId?ch:c;});else channels.unshift(ch);
@@ -921,7 +937,7 @@ function renderTodos(){
 async function addTodo(){
   var t=document.getElementById('todo-title').value.trim();if(!t)return;
   var row={id:Date.now(),user_id:uid(),title:t,channel:document.getElementById('todo-channel').value.trim(),url:document.getElementById('todo-url').value.trim()};
-  var ok=await dbUpsert('todos',row);
+  var ok=await dbUpsert('todos',row,false);
   if(ok){todos.push(row);['todo-title','todo-channel','todo-url'].forEach(function(id){document.getElementById(id).value='';});renderTodos();renderStats();}
 }
 async function delTodo(id){
@@ -936,7 +952,7 @@ function clearRipoffForm(){['rip-name','rip-url','rip-notes'].forEach(function(i
 async function saveRipoff(){
   var name=document.getElementById('rip-name').value.trim();if(!name){document.getElementById('rip-save-status').textContent='Please enter a name.';return;}
   var row={id:_ripId||Date.now(),user_id:uid(),name:name,url:document.getElementById('rip-url').value.trim(),notes:document.getElementById('rip-notes').value.trim(),carpet:_carpet};
-  var ok=await dbUpsert('ripoffs',row);
+  var ok=await dbUpsert('ripoffs',row,!!_ripId);
   if(!ok)return;
   if(_ripId)ripoffs=ripoffs.map(function(r){return r.id===_ripId?row:r;});else ripoffs.unshift(row);
   clearRipoffForm();document.getElementById('rip-save-status').textContent='Saved!';renderRipoffs();
@@ -950,7 +966,7 @@ async function delRipoff(id){
 function renderRipoffs(){
   document.getElementById('ripoffs-list').innerHTML=!ripoffs.length?'<div class="empty">No ripoffs yet.</div>':ripoffs.map(function(r){
     var ci=r.carpet===true?'&#10004;&#65039;':r.carpet===false?'&#10060;':'&#8212;';
-    return '<div class="card"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+(r.url?'<a class="chn" href="'+r.url+'" target="_blank">'+r.name+'</a>':'<span class="ct">'+r.name+'</span>')+'<span class="cr">&#128955; Carpet: '+ci+'</span></div>'+(r.notes?'<div class="crv">'+r.notes+'</div>':'')+'<div class="ca"><button class="btn sm" onclick="editRipoff('+r.id+')">&#9999; Edit</button><button class="btn sm danger" onclick="delRipoff('+r.id+')">&#10005; Delete</button></div></div>';
+    return '<div class="card"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+(r.url?'<a class="chn" href="'+esc(r.url)+'" target="_blank">'+esc(r.name)+'</a>':'<span class="ct">'+esc(r.name)+'</span>')+'<span class="cr">&#128955; Carpet: '+ci+'</span></div>'+(r.notes?'<div class="crv">'+esc(r.notes)+'</div>':'')+'<div class="ca"><button class="btn sm" onclick="editRipoff('+r.id+')">&#9999; Edit</button><button class="btn sm danger" onclick="delRipoff('+r.id+')">&#10005; Delete</button></div></div>';
   }).join('');
 }
 
