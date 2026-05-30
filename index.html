@@ -219,7 +219,16 @@ label{font-size:11px;color:#666;display:block;margin-bottom:4px;text-transform:u
 </div>
 
 <div id="tab-series" style="display:none">
-  <div class="af">
+  <div style="display:flex;gap:8px;margin-bottom:1rem;flex-wrap:wrap">
+    <select id="series-sort" onchange="renderSeries()" style="width:180px;flex:none">
+      <option value="added">Sort: Date added</option>
+      <option value="liked">Sort: Liked</option>
+      <option value="disliked">Sort: Disliked</option>
+      <option value="az">Sort: A&#8211;Z</option>
+    </select>
+    <button class="btn primary" onclick="toggleSeriesForm()" id="series-form-toggle">+ Add series</button>
+  </div>
+  <div class="af" id="series-form-box" style="display:none">
     <div style="font-size:13px;font-weight:500;color:#ccc;margin-bottom:10px" id="series-form-title">Add series</div>
     <div class="ff"><label>Playlist URL (optional)</label>
       <div class="ur"><input type="text" id="s-playlist-url" placeholder="https://youtube.com/playlist?list=...">
@@ -391,7 +400,6 @@ async function initAuth(){
   }
   document.getElementById('auth-screen').style.display='flex';
 }
-
 function showApp(){
   document.getElementById('auth-screen').style.display='none';
   document.getElementById('main-app').style.display='block';
@@ -768,6 +776,22 @@ function toggleFormLike(val){
   document.getElementById('form-like-clear').style.display=(v!==null&&v!==undefined)?'inline-block':'none';
 }
 
+function toggleSeriesForm(){
+  var box=document.getElementById('series-form-box');
+  var btn=document.getElementById('series-form-toggle');
+  var open=box.style.display==='block';
+  box.style.display=open?'none':'block';
+  btn.textContent=open?'+ Add series':'&#10005; Close form';
+}
+
+function toggleSeriesForm(){
+  var box=document.getElementById('series-form-box');
+  var btn=document.getElementById('series-form-toggle');
+  var open=box.style.display==='block';
+  box.style.display=open?'none':'block';
+  btn.textContent=open?'+ Add series':'✕ Close form';
+}
+
 function toggleSeriesFormLike(val){
   var cur=window._seriesFormLike;
   window._seriesFormLike = (cur===val) ? null : val;
@@ -861,7 +885,11 @@ function editSeries(id){
   document.getElementById('s-title').value=s.title;document.getElementById('s-channel').value=s.channel;
   renderCatSelect(s.cat);document.getElementById('s-year').value=s.year;document.getElementById('s-review').value=s.review||'';
   _seriesRating=s.rating||'';_seriesId=id;window._seriesFormLike=s.liked||null;toggleSeriesFormLike(s.liked||null);renderRGrid('s-rating-grid');
-  document.getElementById('series-form-title').textContent='Edit series';window.scrollTo(0,0);
+  document.getElementById('series-form-title').textContent='Edit series';
+  var box=document.getElementById('series-form-box');
+  var btn=document.getElementById('series-form-toggle');
+  box.style.display='block';btn.textContent='&#10005; Close form';
+  window.scrollTo(0,0);
 }
 async function saveSeries(){
   var title=document.getElementById('s-title').value.trim();if(!title){document.getElementById('s-save-status').textContent='Please enter a title.';return;}
@@ -871,7 +899,12 @@ async function saveSeries(){
   var ok=await dbUpsert('series',row,!!_seriesId);
   if(!ok)return;
   if(_seriesId)series=series.map(function(s){return s.id===_seriesId?row:s;});else series.unshift(row);
-  clearSeriesForm();document.getElementById('s-save-status').textContent='Saved!';renderSeries();
+  clearSeriesForm();
+  var box=document.getElementById('series-form-box');
+  var btn=document.getElementById('series-form-toggle');
+  if(box){box.style.display='none';}
+  if(btn){btn.textContent='+ Add series';}
+  document.getElementById('s-save-status').textContent='Saved!';renderSeries();
 }
 async function deleteSeries(id){
   if(!confirm('Delete?'))return;
@@ -898,19 +931,62 @@ async function saveEpNote(sid,eid,val){
   var s=series.find(function(x){return x.id===sid;});if(!s)return;
   var ep=(s.episodes||[]).find(function(e){return e.id===eid;});if(ep){ep.note=val;await sbFetch('PATCH','series?id=eq.'+sid+'&user_id=eq.'+uid(),{episodes:s.episodes});}
 }
+function toggleSeriesLike(id,val){
+  var s=series.find(function(x){return x.id===id;});if(!s)return;
+  s.liked=s.liked===val?null:val;
+  sbFetch('PATCH','series?id=eq.'+id+'&user_id=eq.'+uid(),{liked:s.liked});
+  renderSeries();
+}
+
 function renderSeries(){
-  renderStats();var con=document.getElementById('series-container');
+  renderStats();
+  var con=document.getElementById('series-container');
   if(!series.length){con.innerHTML='<div class="empty">No series yet.</div>';return;}
-  con.innerHTML=series.map(function(s){
+  var sortMode=document.getElementById('series-sort')?document.getElementById('series-sort').value:'added';
+  var sorted=series.slice();
+  if(sortMode==='liked') sorted=sorted.filter(function(s){return s.liked===true;});
+  else if(sortMode==='disliked') sorted=sorted.filter(function(s){return s.liked===false;});
+  else if(sortMode==='az') sorted.sort(function(a,b){return a.title.localeCompare(b.title);});
+  if(!sorted.length){con.innerHTML='<div class="empty">No series match this filter.</div>';return;}
+  con.innerHTML=sorted.map(function(s){
     var eps=s.episodes||[];
     var ephtml=eps.map(function(ep,i){
-      var t=ep.url?'<a class="ept" href="'+ep.url+'" target="_blank">'+ep.title+'</a>':'<span class="ept" style="cursor:default">'+ep.title+'</span>';
-      return '<div class="epi"><div class="epn">'+(i+1)+'</div><div class="epb">'+t+'<div style="margin-top:3px"><input type="text" value="'+(ep.note||'')+'" placeholder="Quick note..." style="background:#0f0f0f;border:1px solid #1e1e1e;border-radius:6px;color:#888;font-size:12px;padding:3px 7px;width:100%" onchange="saveEpNote('+s.id+','+ep.id+',this.value)"></div></div><button class="btn sm danger" onclick="delEp('+s.id+','+ep.id+')">&#10005;</button></div>';
+      var t=ep.url?'<a class="ept" href="'+esc(ep.url)+'" target="_blank">'+esc(ep.title)+'</a>':'<span class="ept" style="cursor:default">'+esc(ep.title)+'</span>';
+      return '<div class="epi"><div class="epn">'+(i+1)+'</div><div class="epb">'+t+'<div style="margin-top:3px"><input type="text" value="'+esc(ep.note||'')+'" placeholder="Quick note..." style="background:#0f0f0f;border:1px solid #1e1e1e;border-radius:6px;color:#888;font-size:12px;padding:3px 7px;width:100%" onchange="saveEpNote('+s.id+','+ep.id+',this.value)"></div></div><button class="btn sm danger" onclick="delEp('+s.id+','+ep.id+')">&#10005;</button></div>';
     }).join('');
     var addep='<div style="margin-top:10px;padding-top:8px;border-top:1px solid #1e1e1e"><div style="font-size:11px;color:#555;margin-bottom:6px">ADD EPISODE</div><div class="ur" style="margin-bottom:6px"><input type="text" id="ept-'+s.id+'" placeholder="Episode title" onkeydown="if(event.key===`Enter`)addEp('+s.id+')"></div><div class="ur"><input type="text" id="epu-'+s.id+'" placeholder="YouTube URL (optional)" onkeydown="if(event.key===`Enter`)addEp('+s.id+')"><button class="btn sm primary" onclick="addEp('+s.id+')">Add</button></div></div>';
-    return '<div class="sc"><div class="card-top">'+(function(){var fe=eps&&eps[0];if(fe&&fe.url){var m=fe.url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);if(m)return '<div class="thumb" style="width:88px;height:50px;flex-shrink:0;border-radius:6px"><img src="https://img.youtube.com/vi/'+m[1]+'/mqdefault.jpg" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'&#128250;\'"></div>';}return '<div style="font-size:22px;width:88px;height:50px;background:#1e1e2e;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0">&#128250;</div>';})()+'<div class="ci"><span class="ct" style="cursor:default">'+s.title+'</span><div class="cm">'+(s.channel||'')+(s.year?' · '+s.year:'')+(eps.length?' · '+eps.length+' ep':'')+'</div>'+(s.rating?'<span class="cr">'+esc(s.rating)+'</span>':'')+(s.liked===true?' <span class="lbtn on" style="cursor:default;padding:2px 8px;font-size:12px">&#128077;</span>':s.liked===false?' <span class="dlbtn on" style="cursor:default;padding:2px 8px;font-size:12px">&#128078;</span>':'')+'</div></div>'+(s.review?'<div class="crv">'+s.review+'</div>':'')+'<div class="ca"><button class="stog" onclick="toggleEps('+s.id+')">&#9656; Episodes ('+eps.length+')</button><button class="btn sm" onclick="editSeries('+s.id+')">&#9999; Edit</button><button class="btn sm danger" onclick="deleteSeries('+s.id+')">&#10005; Delete</button></div><div class="epl" id="eps-'+s.id+'">'+(ephtml||'<div style="color:#555;font-size:13px;padding:6px 0">No episodes yet.</div>')+addep+'</div></div>';
+    // Thumbnail from first episode
+    var thumbEl;
+    var fe=eps[0];
+    if(fe&&fe.url){
+      var m=fe.url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+      if(m) thumbEl='<div class="thumb" style="width:88px;height:50px;flex-shrink:0;border-radius:6px"><img src="https://img.youtube.com/vi/'+m[1]+'/mqdefault.jpg" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.textContent=String.fromCodePoint(128250)"></div>';
+      else thumbEl='<div style="font-size:22px;width:88px;height:50px;background:#1e1e2e;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0">&#128250;</div>';
+    } else {
+      thumbEl='<div style="font-size:22px;width:88px;height:50px;background:#1e1e2e;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0">&#128250;</div>';
+    }
+    var lo=s.liked===true?' on':'';
+    var dlo=s.liked===false?' on':'';
+    return '<div class="sc">'+
+      '<div class="card-top">'+thumbEl+
+      '<div class="ci">'+
+        '<span class="ct" style="cursor:default">'+esc(s.title)+'</span>'+
+        '<div class="cm">'+(s.channel?esc(s.channel):'')+(s.year?' · '+s.year:'')+(eps.length?' · '+eps.length+' ep':'')+'</div>'+
+        (s.rating?'<span class="cr">'+esc(s.rating)+'</span>':'')+
+      '</div></div>'+
+      (s.review?'<div class="crv">'+esc(s.review)+'</div>':'')+
+      '<div class="ca">'+
+        '<button class="lbtn'+lo+'" onclick="toggleSeriesLike('+s.id+',true)">&#128077;</button>'+
+        '<button class="dlbtn'+dlo+'" onclick="toggleSeriesLike('+s.id+',false)">&#128078;</button>'+
+        '<button class="stog" onclick="toggleEps('+s.id+')">&#9656; Episodes ('+eps.length+')</button>'+
+        '<button class="btn sm" onclick="editSeries('+s.id+')">&#9999; Edit</button>'+
+        '<button class="btn sm danger" onclick="deleteSeries('+s.id+')">&#10005; Delete</button>'+
+      '</div>'+
+      '<div class="epl" id="eps-'+s.id+'">'+(ephtml||'<div style="color:#555;font-size:13px;padding:6px 0">No episodes yet.</div>')+addep+'</div>'+
+    '</div>';
   }).join('');
 }
+
 
 // ── HISTORY ───────────────────────────────────────────────────────────────────
 function renderHistory(){
@@ -1049,7 +1125,7 @@ window.toggleNewCat=toggleNewCat;window.confirmNewCat=confirmNewCat;
 window.toggleNewTag=toggleNewTag;window.confirmNewTag=confirmNewTag;
 window.handleTagChip=handleTagChip;window.renderCards=renderCards;window.renderHistory=renderHistory;window.renderChannels=renderChannels;
 window.addTodo=addTodo;window.delTodo=delTodo;window.promoteReview=promoteReview;
-window.saveSeries=saveSeries;window.editSeries=editSeries;window.deleteSeries=deleteSeries;
+window.toggleSeriesForm=toggleSeriesForm;window.saveSeries=saveSeries;window.editSeries=editSeries;window.deleteSeries=deleteSeries;
 window.clearSeriesForm=clearSeriesForm;window.toggleEps=toggleEps;window.addEp=addEp;window.delEp=delEp;window.saveEpNote=saveEpNote;
 window.saveChannel=saveChannel;window.deleteChannel=deleteChannel;window.clearChForm=clearChForm;window.toggleChVids=toggleChVids;
 window.saveRipoff=saveRipoff;window.editRipoff=editRipoff;window.delRipoff=delRipoff;window.clearRipoffForm=clearRipoffForm;window.selectCarpet=selectCarpet;
