@@ -201,6 +201,14 @@ label{font-size:11px;color:#666;display:block;margin-bottom:4px;text-transform:u
           <button class="btn primary" onclick="confirmNewTag()">Add</button>
           <button class="btn" onclick="toggleNewTag()">&#10005;</button></div></div>
       <button class="btn" onclick="toggleNewTag()" style="font-size:11px;padding:3px 10px">+ new tag</button></div>
+    <div class="ff">
+      <label>Like</label>
+      <div style="display:flex;gap:8px">
+        <button class="lbtn" id="form-like-btn" onclick="toggleFormLike(true)">&#128077; Like</button>
+        <button class="dlbtn" id="form-dislike-btn" onclick="toggleFormLike(false)">&#128078; Dislike</button>
+        <button class="btn sm" id="form-like-clear" onclick="toggleFormLike(null)" style="display:none">Clear</button>
+      </div>
+    </div>
     <div class="ff"><label>Rating</label><div class="rg" id="rating-grid"></div></div>
     <div class="ff"><label>Review</label><textarea id="f-review" placeholder="Your thoughts..."></textarea></div>
     <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -724,7 +732,7 @@ function renderRGrid(id,curOverride){
   var isSeries=id==='s-rating-grid';
   var cur=curOverride!==undefined?curOverride:(isSeries?_seriesRating:selRating);
   var handler=isSeries?'setSRating':'setRating';
-  el.innerHTML=RATINGS.map(function(r){return '<button class="rc'+(r===cur?' sel':'')+'" data-r="'+r.replace(/"/g,'&quot;')+'" data-h="'+handler+'" onclick="handleRChip(this)">'+r+'</button>';}).join('')+'<button class="rc" data-gid="'+id+'" onclick="customRDialog(this.dataset.gid)" style="border-style:dashed">+ custom</button>';
+  el.innerHTML=RATINGS.map(function(r){return '<button class="rc'+(r===cur?' sel':'')+'" data-r="'+r.replace(/"/g,'&quot;')+'" data-h="'+handler+'" onclick="handleRChip(this)">'+r+'</button>';}).join('')+'<button class="rc" data-gid="'+id+'" onclick="customRDialog(this.dataset.gid)" style="border-style:dashed">+ custom</button>'+'<button class="rc" data-gid="'+id+'" onclick="emojiRDialog(this.dataset.gid)" style="border-style:dashed">&#128522; emoji</button>';
 }
 function handleRChip(btn){if(btn.dataset.h==='setSRating')setSRating(btn.dataset.r);else setRating(btn.dataset.r);}
 function setRating(r){selRating=selRating===r?'':r;renderRGrid('rating-grid');}
@@ -743,10 +751,41 @@ function customRDialog(gid){
 }
 
 // ── ENTRIES ───────────────────────────────────────────────────────────────────
+function toggleFormLike(val){
+  var curLike=window._formLike;
+  window._formLike = (curLike===val) ? null : val;
+  var v=window._formLike;
+  document.getElementById('form-like-btn').classList.toggle('on', v===true);
+  document.getElementById('form-dislike-btn').classList.toggle('on', v===false);
+  document.getElementById('form-like-clear').style.display=(v!==null&&v!==undefined)?'inline-block':'none';
+}
+
+var EMOJI_LIST=['😀','😂','😭','😍','🤔','😎','🥹','💀','🔥','💯','👀','🤯','😤','🥱','🤢','😴','🫠','🤡','👍','👎','❤️','💔','⭐','🌟','💥','🎉','🎯','🏆','💩','🗿','🤌','✨','🎶','🎬','🎮','📺','🍿','🧠','👏','🙏'];
+
+function emojiRDialog(gid){
+  var ov=document.createElement('div');ov.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:1000;display:flex;align-items:center;justify-content:center';
+  var box=document.createElement('div');box.style.cssText='background:#1a1a1a;border:1px solid #444;border-radius:10px;padding:1.2rem;display:flex;flex-direction:column;gap:10px;min-width:320px;max-width:380px';
+  var lbl=document.createElement('div');lbl.style.cssText='font-size:12px;color:#888';lbl.textContent='Pick an emoji rating';
+  var grid=document.createElement('div');grid.style.cssText='display:flex;flex-wrap:wrap;gap:6px';
+  EMOJI_LIST.forEach(function(em){
+    var btn=document.createElement('button');btn.className='rc';btn.style.cssText='font-size:18px;padding:6px 8px';btn.textContent=em;
+    btn.onclick=function(){if(gid==='s-rating-grid')setSRating(em);else setRating(em);ov.remove();};
+    grid.append(btn);
+  });
+  var inp=document.createElement('input');inp.placeholder='Or type custom emoji/text...';inp.style.cssText='background:#1a1a1a;border:1px solid #2e2e2e;border-radius:8px;color:#e8e8e8;padding:7px 10px;width:100%;outline:none';
+  var row=document.createElement('div');row.style.cssText='display:flex;gap:8px;justify-content:flex-end';
+  var ok=document.createElement('button');ok.className='btn primary';ok.textContent='Add';
+  var cancel=document.createElement('button');cancel.className='btn';cancel.textContent='Cancel';
+  row.append(ok,cancel);box.append(lbl,grid,inp,row);ov.append(box);document.body.append(ov);
+  ok.onclick=function(){var r=inp.value.trim();if(r){if(gid==='s-rating-grid')setSRating(r);else setRating(r);}ov.remove();};
+  cancel.onclick=function(){ov.remove();};
+  inp.onkeydown=function(ev){if(ev.key==='Enter')ok.click();if(ev.key==='Escape')ov.remove();};
+}
+
 function clearForm(){
   ['url-input','f-title','f-channel','f-review'].forEach(function(id){document.getElementById(id).value='';});
   document.getElementById('f-year').value=new Date().getFullYear();
-  selRating='';selTags=[];_thumb=null;_url=null;_pub=null;_desc=null;_editId=null;
+  selRating='';selTags=[];_thumb=null;_url=null;_pub=null;_desc=null;_editId=null;window._formLike=null;toggleFormLike(null);
   renderRGrid('rating-grid');renderTagChips('tag-chip-grid',[]);
   document.getElementById('fetch-status').innerHTML='';document.getElementById('save-status').textContent='';
 }
@@ -756,7 +795,7 @@ function editEntry(id){
   renderCatSelect(e.cat);document.getElementById('f-year').value=e.year;document.getElementById('f-review').value=e.review||'';
   selRating=e.rating||'';selTags=(e.tags||[]).slice();
   _thumb=e.thumb||null;_url=e.url||null;_pub=e.published||null;_desc=e.desc||null;_editId=id;
-  renderRGrid('rating-grid');renderTagChips('tag-chip-grid',selTags);
+  window._formLike=e.liked;toggleFormLike(e.liked);renderRGrid('rating-grid');renderTagChips('tag-chip-grid',selTags);
   if(e.thumb)setFS('fetch-status','success',(e.channel||'')+(e.published?' · '+e.published:''),e.thumb);
 }
 async function saveEntry(){
@@ -773,7 +812,7 @@ async function saveEntry(){
     rating:selRating, review:document.getElementById('f-review').value.trim(),
     thumb:_thumb||'', url:_url||document.getElementById('url-input').value.trim(),
     published:_pub||'', description:_desc||'', tags:selTags.slice(),
-    liked:existing?existing.liked:null,
+    liked:(window._formLike!==undefined&&window._formLike!==null)?window._formLike:(existing?existing.liked:null),
     reviewed_at:(_editId&&existing&&existing.reviewedAt)?existing.reviewedAt:now
   };
   var ok=await dbUpsert('entries',row,!!_editId);
@@ -852,7 +891,7 @@ function renderSeries(){
       return '<div class="epi"><div class="epn">'+(i+1)+'</div><div class="epb">'+t+'<div style="margin-top:3px"><input type="text" value="'+(ep.note||'')+'" placeholder="Quick note..." style="background:#0f0f0f;border:1px solid #1e1e1e;border-radius:6px;color:#888;font-size:12px;padding:3px 7px;width:100%" onchange="saveEpNote('+s.id+','+ep.id+',this.value)"></div></div><button class="btn sm danger" onclick="delEp('+s.id+','+ep.id+')">&#10005;</button></div>';
     }).join('');
     var addep='<div style="margin-top:10px;padding-top:8px;border-top:1px solid #1e1e1e"><div style="font-size:11px;color:#555;margin-bottom:6px">ADD EPISODE</div><div class="ur" style="margin-bottom:6px"><input type="text" id="ept-'+s.id+'" placeholder="Episode title" onkeydown="if(event.key===`Enter`)addEp('+s.id+')"></div><div class="ur"><input type="text" id="epu-'+s.id+'" placeholder="YouTube URL (optional)" onkeydown="if(event.key===`Enter`)addEp('+s.id+')"><button class="btn sm primary" onclick="addEp('+s.id+')">Add</button></div></div>';
-    return '<div class="sc"><div class="card-top"><div style="font-size:22px;width:88px;height:50px;background:#1e1e2e;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0">&#128250;</div><div class="ci"><span class="ct" style="cursor:default">'+s.title+'</span><div class="cm">'+(s.channel||'')+(s.year?' · '+s.year:'')+(eps.length?' · '+eps.length+' ep':'')+'</div>'+(s.rating?'<span class="cr">'+s.rating+'</span>':'')+'</div></div>'+(s.review?'<div class="crv">'+s.review+'</div>':'')+'<div class="ca"><button class="stog" onclick="toggleEps('+s.id+')">&#9656; Episodes ('+eps.length+')</button><button class="btn sm" onclick="editSeries('+s.id+')">&#9999; Edit</button><button class="btn sm danger" onclick="deleteSeries('+s.id+')">&#10005; Delete</button></div><div class="epl" id="eps-'+s.id+'">'+(ephtml||'<div style="color:#555;font-size:13px;padding:6px 0">No episodes yet.</div>')+addep+'</div></div>';
+    return '<div class="sc"><div class="card-top">'+(function(){var fe=eps&&eps[0];if(fe&&fe.url){var m=fe.url.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);if(m)return '<div class="thumb" style="width:88px;height:50px;flex-shrink:0;border-radius:6px"><img src="https://img.youtube.com/vi/'+m[1]+'/mqdefault.jpg" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML=\'&#128250;\'"></div>';}return '<div style="font-size:22px;width:88px;height:50px;background:#1e1e2e;border-radius:6px;display:flex;align-items:center;justify-content:center;flex-shrink:0">&#128250;</div>';})()+'<div class="ci"><span class="ct" style="cursor:default">'+s.title+'</span><div class="cm">'+(s.channel||'')+(s.year?' · '+s.year:'')+(eps.length?' · '+eps.length+' ep':'')+'</div>'+(s.rating?'<span class="cr">'+s.rating+'</span>':'')+'</div></div>'+(s.review?'<div class="crv">'+s.review+'</div>':'')+'<div class="ca"><button class="stog" onclick="toggleEps('+s.id+')">&#9656; Episodes ('+eps.length+')</button><button class="btn sm" onclick="editSeries('+s.id+')">&#9999; Edit</button><button class="btn sm danger" onclick="deleteSeries('+s.id+')">&#10005; Delete</button></div><div class="epl" id="eps-'+s.id+'">'+(ephtml||'<div style="color:#555;font-size:13px;padding:6px 0">No episodes yet.</div>')+addep+'</div></div>';
   }).join('');
 }
 
