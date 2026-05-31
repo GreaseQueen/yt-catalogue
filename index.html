@@ -1122,7 +1122,6 @@ async function loadFriendsData(){
       avatarUrl:prof.avatar_url||''
     };
   });
-  console.log('Friends: mapped count=', friendsEntries.length);
   friendsLoaded=true;
   // Populate category filter
   var cats=Array.from(new Set(friendsEntries.map(function(e){return e.cat;}).filter(Boolean)));
@@ -1136,6 +1135,7 @@ function renderFriends(){
   var cat=document.getElementById('friends-cat').value;
   var sort=document.getElementById('friends-sort').value;
   var filtered=friendsEntries.filter(function(e){
+    if(e.userId===uid())return false;
     if(cat&&e.cat!==cat)return false;
     if(search&&(e.title+e.channel+(e.review||'')+(e.rating||'')+e.username).toLowerCase().indexOf(search)<0)return false;
     return true;
