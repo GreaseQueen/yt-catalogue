@@ -1110,6 +1110,7 @@ async function loadFriendsData(){
     var rp=await sbFetch('GET','profiles?select=id,username,avatar_url',null);
     if(rp.data)(rp.data).forEach(function(p){profileMap[p.id]=p;});
   }catch(e){}
+  console.log('Friends: raw data count=', r.data.length, 'sample=', r.data[0]);
   friendsEntries=r.data.map(function(e){
     var prof=profileMap[e.user_id]||{};
     return {
@@ -1121,6 +1122,7 @@ async function loadFriendsData(){
       avatarUrl:prof.avatar_url||''
     };
   });
+  console.log('Friends: mapped count=', friendsEntries.length);
   friendsLoaded=true;
   // Populate category filter
   var cats=Array.from(new Set(friendsEntries.map(function(e){return e.cat;}).filter(Boolean)));
