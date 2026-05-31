@@ -1146,16 +1146,28 @@ function renderFriends(){
   else if(sort==='disliked') filtered=filtered.filter(function(e){return e.liked===false;});
   filtered.sort(function(a,b){return (b.reviewedAt||0)-(a.reviewedAt||0);});
   var con=document.getElementById('friends-container');
-  if(!filtered.length){con.innerHTML='<div class="empty">No reviews found.</div>';return;}
-  con.innerHTML=filtered.map(function(e){
-    var isMe=e.userId===uid();
-    var thumb=e.thumb?'<div class="thumb"><img src="'+esc(e.thumb)+'" onerror="this.parentElement.textContent=String.fromCodePoint(9654)"></div>':'<div class="thumb">&#9654;</div>';
-    var title=e.url?'<a class="ct" href="'+esc(e.url)+'" target="_blank">'+esc(e.title)+'</a>':'<span class="ct">'+esc(e.title)+'</span>';
+  if(!filtered.length){con.innerHTML='<div class="empty">No reviews from others yet.</div>';return;}
+  var html='';
+  filtered.forEach(function(e){
+    var thumbHtml=e.thumb?'<div class="thumb"><img src="'+esc(e.thumb)+'" onerror="this.parentElement.textContent=String.fromCodePoint(9654)"></div>':'<div class="thumb">&#9654;</div>';
+    var titleHtml=e.url?'<a class="ct" href="'+esc(e.url)+'" target="_blank">'+esc(e.title)+'</a>':'<span class="ct">'+esc(e.title)+'</span>';
     var reviewedStr=e.reviewedAt?(' · '+new Date(e.reviewedAt).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})):'';
-    var userBadge='<span style="font-size:11px;padding:2px 8px;border-radius:99px;background:'+(isMe?'#1a2a3a':'#1e1e1e')+';border:1px solid '+(isMe?'#2a4a6a':'#2a2a2a')+';color:'+(isMe?'#7ab0e8':'#888')+'">'+(isMe?'You':esc(e.username))+'</span>';
-    var lo=e.liked===true?' on':''; var dlo=e.liked===false?' on':'';
-    return '<div class="card"><div class="card-top">'+thumb+'<div class="ci">'+title+'<div class="cm">'+esc(e.channel||'')+(e.year?' · '+e.year:'')+reviewedStr+'</div>'+(e.rating?'<span class="cr">'+esc(e.rating)+'</span>':'')+'</div></div>'+(e.review?'<div class="crv">'+esc(e.review)+'</div>':'')+'<div class="ca">'+userBadge+'<button class="lbtn'+lo+'" style="cursor:default">&#128077;</button><button class="dlbtn'+dlo+'" style="cursor:default">&#128078;</button></div></div>';
-  }).join('');
+    var userBadge='<span style="font-size:11px;padding:2px 8px;border-radius:99px;background:#1e1e1e;border:1px solid #2a2a2a;color:#888">'+esc(e.username)+'</span>';
+    var lo=e.liked===true?' on':'';
+    var dlo=e.liked===false?' on':'';
+    var reviewHtml=e.review?'<div class="crv">'+esc(e.review)+'</div>':'';
+    var ratingHtml=e.rating?'<span class="cr">'+esc(e.rating)+'</span>':'';
+    html+='<div class="card">';
+    html+='<div class="card-top">'+thumbHtml+'<div class="ci">'+titleHtml;
+    html+='<div class="cm">'+esc(e.channel||'')+(e.year?' · '+e.year:'')+reviewedStr+'</div>';
+    html+=ratingHtml+'</div></div>';
+    html+=reviewHtml;
+    html+='<div class="ca">'+userBadge;
+    html+='<button class="lbtn'+lo+'" style="cursor:default">&#128077;</button>';
+    html+='<button class="dlbtn'+dlo+'" style="cursor:default">&#128078;</button>';
+    html+='</div></div>';
+  });
+  con.innerHTML=html;
 }
 
 // ── TABS ──────────────────────────────────────────────────────────────────────
