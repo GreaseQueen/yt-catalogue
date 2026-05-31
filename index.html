@@ -217,8 +217,9 @@ label{font-size:11px;color:#666;display:block;margin-bottom:4px;text-transform:u
     </div>
     <div class="ff"><label>Rating</label><div class="rg" id="rating-grid"></div></div>
     <div class="ff"><label>Review</label><textarea id="f-review" placeholder="Your thoughts..."></textarea></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end">
+    <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
       <button class="btn" onclick="clearForm()">Clear</button>
+      <button class="btn" id="save-todo-btn" onclick="saveEntryAsTodo()">+ To Review list</button>
       <button class="btn primary" id="save-entry-btn" onclick="saveEntry()">Save entry</button></div>
     <div class="sm" id="save-status"></div>
   </div>
@@ -826,6 +827,27 @@ function emojiRDialog(gid){
   inp.onkeydown=function(ev){if(ev.key==='Enter')ok.click();if(ev.key==='Escape')ov.remove();};
 }
 
+async function saveEntryAsTodo(){
+  var title=document.getElementById('f-title').value.trim();
+  if(!title){document.getElementById('save-status').textContent='Please enter a title first.';return;}
+  var btn=document.getElementById('save-todo-btn');
+  btn.disabled=true;btn.textContent='Saving...';
+  var row={
+    id:Date.now(),user_id:uid(),
+    title:title,
+    channel:document.getElementById('f-channel').value.trim(),
+    url:_url||document.getElementById('url-input').value.trim()
+  };
+  var ok=await dbUpsert('todos',row,false);
+  btn.disabled=false;btn.textContent='+ To Review list';
+  if(!ok)return;
+  todos.push(row);
+  renderTodos();renderStats();
+  document.getElementById('save-status').textContent='Added to To Review list!';
+  clearForm();
+  setTimeout(function(){switchTab('todo');},700);
+}
+
 function clearForm(){
   ['url-input','f-title','f-channel','f-review'].forEach(function(id){document.getElementById(id).value='';});
   document.getElementById('f-year').value=new Date().getFullYear();
@@ -1178,8 +1200,8 @@ function renderFriends(){
     html+=ratingHtml+'</div></div>';
     html+=reviewHtml;
     html+='<div class="ca">'+userBadge;
-    html+='<button class="lbtn'+lo+'" style="cursor:default">&#128077;</button>';
-    html+='<button class="dlbtn'+dlo+'" style="cursor:default">&#128078;</button>';
+    html+='<button class="lbtn'+lo+'" onclick="friendsLikeToggle('+e.id+',true)">&#128077;</button>';
+    html+='<button class="dlbtn'+dlo+'" onclick="friendsLikeToggle('+e.id+',false)">&#128078;</button>';
     html+='</div></div>';
   });
   console.log("friends html:", html.length, html.slice(0,100));
@@ -1227,6 +1249,14 @@ function openUsernameDialog(){
   inp.onkeydown=function(ev){if(ev.key==='Enter')ok.click();if(ev.key==='Escape')ov.remove();};
 }
 
+// ── FRIENDS LIKE ─────────────────────────────────────────────────────────────
+async function friendsLikeToggle(id,val){
+  var e=friendsEntries.find(function(x){return x.id===id;});if(!e)return;
+  e.liked=e.liked===val?null:val;
+  await sbFetch('PATCH','entries?id=eq.'+id+'&user_id=eq.'+e.userId,{liked:e.liked});
+  renderFriends();
+}
+
 // ── DESCRIPTION TOGGLE ────────────────────────────────────────────────────────
 function toggleDesc(id){
   var el=document.getElementById('desc-'+id);if(!el)return;
@@ -1265,7 +1295,7 @@ window.clearSeriesForm=clearSeriesForm;window.toggleEps=toggleEps;window.addEp=a
 window.saveChannel=saveChannel;window.deleteChannel=deleteChannel;window.clearChForm=clearChForm;window.toggleChVids=toggleChVids;
 window.saveRipoff=saveRipoff;window.editRipoff=editRipoff;window.delRipoff=delRipoff;window.clearRipoffForm=clearRipoffForm;window.selectCarpet=selectCarpet;
 window.exportData=exportData;window.hToTodo=hToTodo;window.hToAdd=hToAdd;window.hDismiss=hDismiss;
-window.histHTML=histHTML;window.toggleChVids=toggleChVids;window.renderFriends=renderFriends;window.openUsernameDialog=openUsernameDialog;window.toggleDesc=toggleDesc;
+window.histHTML=histHTML;window.toggleChVids=toggleChVids;window.renderFriends=renderFriends;window.openUsernameDialog=openUsernameDialog;window.toggleDesc=toggleDesc;window.friendsLikeToggle=friendsLikeToggle;window.saveEntryAsTodo=saveEntryAsTodo;
 initAuth();
 
 </script>
