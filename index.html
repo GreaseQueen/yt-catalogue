@@ -1099,13 +1099,18 @@ async function loadFriendsData(){
   if(friendsLoaded)return;
   document.getElementById('friends-container').innerHTML='<div class="empty">Loading...</div>';
   // Load all entries from all users (requires read-all RLS policy)
-  var r=await sbFetch('GET','entries?order=reviewed_at.desc&limit=500',null);
-  if(r.error){document.getElementById('friends-container').innerHTML='<div class="empty">Could not load. Make sure the read policy is set in Supabase.</div>';return;}
-  // Also load profiles to show usernames
-  var rp=await sbFetch('GET','profiles?select=id,username,avatar_url',null);
+  var r=await sbFetch('GET','entries?limit=1000',null);
+  if(r.error||!r.data){
+    document.getElementById('friends-container').innerHTML='<div class="empty">Could not load reviews. Error: '+(r.error?r.error.message:'no data')+'</div>';
+    return;
+  }
+  // Try to load profiles - silently ignore if table doesn't exist
   var profileMap={};
-  if(rp.data)(rp.data).forEach(function(p){profileMap[p.id]=p;});
-  friendsEntries=(r.data||[]).map(function(e){
+  try{
+    var rp=await sbFetch('GET','profiles?select=id,username,avatar_url',null);
+    if(rp.data)(rp.data).forEach(function(p){profileMap[p.id]=p;});
+  }catch(e){}
+  friendsEntries=r.data.map(function(e){
     var prof=profileMap[e.user_id]||{};
     return {
       id:e.id,title:e.title,channel:e.channel||'',cat:e.cat||'',year:e.year||'',
