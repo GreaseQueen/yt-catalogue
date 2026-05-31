@@ -1167,6 +1167,7 @@ function renderFriends(){
     html+='<button class="dlbtn'+dlo+'" style="cursor:default">&#128078;</button>';
     html+='</div></div>';
   });
+  console.log("friends html:", html.length, html.slice(0,100));
   con.innerHTML=html;
 }
 
