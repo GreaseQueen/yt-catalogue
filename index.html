@@ -143,9 +143,13 @@ label{font-size:11px;color:#666;display:block;margin-bottom:4px;text-transform:u
 <div id="err-indicator" class="err-indicator">&#10005; Save failed</div>
 
 <div class="app" id="main-app" style="display:none">
-<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem">
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;flex-wrap:wrap;gap:8px">
   <h1 style="margin:0">&#128252; ReviewTube</h1>
-  <button class="btn sm" onclick="signOut()">Sign out</button>
+  <div style="display:flex;align-items:center;gap:8px">
+    <span id="username-display" style="font-size:13px;color:#666"></span>
+    <button class="btn sm" onclick="openUsernameDialog()">&#9999; Username</button>
+    <button class="btn sm" onclick="signOut()">Sign out</button>
+  </div>
 </div>
 <div class="tab-row">
   <button class="tab active" onclick="switchTab('browse')">Browse</button>
@@ -194,6 +198,7 @@ label{font-size:11px;color:#666;display:block;margin-bottom:4px;text-transform:u
             <button class="btn primary" onclick="confirmNewCat()">Add</button>
             <button class="btn" onclick="toggleNewCat()">&#10005;</button></div></div></div>
       <div><label>Year</label><input type="number" id="f-year" value="2026" min="2000" max="2035"></div>
+      <div><label>Duration</label><input type="text" id="f-duration" placeholder="e.g. 14:32" readonly style="color:#666"></div>
     </div>
     <div class="ff"><label>Tags</label>
       <div id="tag-chip-grid" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
@@ -369,7 +374,7 @@ var currentUser = null;
 var entries=[],todos=[],ripoffs=[],series=[],histItems=[],channels=[];
 var cats=[],tags=[],selTags=[];
 var selRating='',activeCat='All',activeTag='';
-var _thumb=null,_url=null,_pub=null,_desc=null,_editId=null;
+var _thumb=null,_url=null,_pub=null,_desc=null,_duration=null,_editId=null;
 var _ripId=null,_carpet=null,_seriesId=null,_seriesRating='';
 var _chId=null,_chAvatar=null,_chDesc='';
 var _seeded=false;
@@ -495,7 +500,7 @@ async function loadAllData(){
     id:r.id,title:r.title,channel:r.channel||'',cat:r.cat||'',year:r.year||'',
     rating:r.rating||'',review:r.review||'',thumb:r.thumb||'',url:r.url||'',
     published:r.published||'',desc:r.description||'',tags:r.tags||[],
-    liked:r.liked,reviewedAt:r.reviewed_at
+    liked:r.liked,reviewedAt:r.reviewed_at,duration:r.duration||'',desc:r.description||''
   };});
 
   todos=rawTodos.map(function(r){return {id:r.id,title:r.title,channel:r.channel||'',url:r.url||''};});
@@ -520,6 +525,7 @@ async function loadAllData(){
   }
 
   renderAll();
+  loadUsername();
 }
 
 // ── SEED FIRST-TIME DATA ──────────────────────────────────────────────────────
@@ -600,7 +606,7 @@ async function fetchMeta(){
   setFS('fetch-status','loading','Fetching...',_thumb);
   document.getElementById('fetch-btn').disabled=true;
   try{
-    var res=await fetch('https://www.googleapis.com/youtube/v3/videos?part=snippet&id='+vid+'&key='+YT_KEY);
+    var res=await fetch('https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id='+vid+'&key='+YT_KEY);
     var d=await res.json();if(d.error)throw new Error(d.error.message);
     var item=d.items&&d.items[0];if(!item)throw new Error('Not found.');
     var s=item.snippet;var pub=new Date(s.publishedAt);
@@ -609,7 +615,15 @@ async function fetchMeta(){
     document.getElementById('f-year').value=pub.getFullYear();
     _thumb=(s.thumbnails.medium&&s.thumbnails.medium.url)||(s.thumbnails.default&&s.thumbnails.default.url)||_thumb;
     _pub=pub.toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'});
-    _desc=s.description?s.description.slice(0,500):'';
+    _desc=s.description||'';
+    var dur='';
+    if(d.items[0].contentDetails&&d.items[0].contentDetails.duration){
+      var iso=d.items[0].contentDetails.duration;
+      var hm=iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+      if(hm){var h=parseInt(hm[1]||0),m=parseInt(hm[2]||0),s2=parseInt(hm[3]||0);dur=h?h+':'+String(m).padStart(2,'0')+':'+String(s2).padStart(2,'0'):m+':'+String(s2).padStart(2,'0');}
+    }
+    document.getElementById('f-duration').value=dur;
+    _duration=dur;
     setFS('fetch-status','success',s.channelTitle+' · '+_pub,_thumb);
   }catch(e){setFS('fetch-status','error','Thumbnail saved — fill title/channel manually.',_thumb);}
   finally{document.getElementById('fetch-btn').disabled=false;}
@@ -729,7 +743,7 @@ function cardHTML(e){
   var tagHtml=(e.tags&&e.tags.length)?'<div class="ctags">'+e.tags.map(function(t){return '<span class="tbadge">'+esc(t)+'</span>';}).join('')+'</div>':'';
   var lo=e.liked===true?' on':'';var dlo=e.liked===false?' on':'';
   var reviewedStr=e.reviewedAt?(' · <span style="color:#444">reviewed '+new Date(e.reviewedAt).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})+'</span>'):'';
-  return '<div class="card"><div class="card-top">'+thumb+'<div class="ci">'+title+'<div class="cm">'+esc(e.channel||'')+(e.published?' · '+esc(e.published):'')+reviewedStr+'</div>'+(e.rating?'<span class="cr">'+esc(e.rating)+'</span>':'')+tagHtml+'</div></div>'+(e.review?'<div class="crv">'+esc(e.review)+'</div>':'')+'<div class="ca"><button class="lbtn'+lo+'" onclick="likeToggle('+e.id+',true)">&#128077;</button><button class="dlbtn'+dlo+'" onclick="likeToggle('+e.id+',false)">&#128078;</button><button class="btn sm" onclick="editEntry('+e.id+')">&#9999; Edit</button><button class="btn sm danger" onclick="deleteEntry('+e.id+')">&#10005; Delete</button></div></div>';
+  return '<div class="card"><div class="card-top">'+thumb+'<div class="ci">'+title+'<div class="cm">'+esc(e.channel||'')+(e.published?' · '+esc(e.published):'')+(e.duration?' · '+esc(e.duration):'')+reviewedStr+'</div>'+(e.rating?'<span class="cr">'+esc(e.rating)+'</span>':'')+tagHtml+'</div></div>'+(e.review?'<div class="crv">'+esc(e.review)+'</div>':'')+(e.desc?'<div><button onclick="toggleDesc('+e.id+')" style="font-size:11px;color:#555;background:none;border:none;cursor:pointer;padding:6px 0">&#9656; Description</button><div id="desc-'+e.id+'" style="display:none;font-size:12px;color:#555;margin-top:4px;line-height:1.6;white-space:pre-wrap">'+esc(e.desc)+'</div></div>':'')+'<div class="ca"><button class="lbtn'+lo+'" onclick="likeToggle('+e.id+',true)">&#128077;</button><button class="dlbtn'+dlo+'" onclick="likeToggle('+e.id+',false)">&#128078;</button><button class="btn sm" onclick="editEntry('+e.id+')">&#9999; Edit</button><button class="btn sm danger" onclick="deleteEntry('+e.id+')">&#10005; Delete</button></div></div>';
 }
 
 function renderRGrid(id,curOverride){
@@ -815,7 +829,7 @@ function emojiRDialog(gid){
 function clearForm(){
   ['url-input','f-title','f-channel','f-review'].forEach(function(id){document.getElementById(id).value='';});
   document.getElementById('f-year').value=new Date().getFullYear();
-  selRating='';selTags=[];_thumb=null;_url=null;_pub=null;_desc=null;_editId=null;window._formLike=null;toggleFormLike(null);
+  selRating='';selTags=[];_thumb=null;_url=null;_pub=null;_desc=null;_duration=null;_editId=null;window._formLike=null;toggleFormLike(null);document.getElementById('f-duration').value='';
   renderRGrid('rating-grid');renderTagChips('tag-chip-grid',[]);
   document.getElementById('fetch-status').innerHTML='';document.getElementById('save-status').textContent='';
 }
@@ -824,7 +838,8 @@ function editEntry(id){
   document.getElementById('url-input').value=e.url||'';document.getElementById('f-title').value=e.title;document.getElementById('f-channel').value=e.channel;
   renderCatSelect(e.cat);document.getElementById('f-year').value=e.year;document.getElementById('f-review').value=e.review||'';
   selRating=e.rating||'';selTags=(e.tags||[]).slice();
-  _thumb=e.thumb||null;_url=e.url||null;_pub=e.published||null;_desc=e.desc||null;_editId=id;
+  _thumb=e.thumb||null;_url=e.url||null;_pub=e.published||null;_desc=e.desc||null;_duration=e.duration||null;_editId=id;
+  if(e.duration)document.getElementById('f-duration').value=e.duration;
   window._formLike=e.liked;toggleFormLike(e.liked);renderRGrid('rating-grid');renderTagChips('tag-chip-grid',selTags);
   if(e.thumb)setFS('fetch-status','success',(e.channel||'')+(e.published?' · '+e.published:''),e.thumb);
 }
@@ -840,7 +855,7 @@ async function saveEntry(){
     cat:document.getElementById('f-cat').value,
     year:document.getElementById('f-year').value,
     rating:selRating, review:document.getElementById('f-review').value.trim(),
-    thumb:_thumb||'', url:_url||document.getElementById('url-input').value.trim(),
+    thumb:_thumb||'', url:_url||document.getElementById('url-input').value.trim(), duration:_duration||'',
     published:_pub||'', description:_desc||'', tags:selTags.slice(),
     liked:(window._formLike!==undefined&&window._formLike!==null)?window._formLike:(existing?existing.liked:null),
     reviewed_at:(_editId&&existing&&existing.reviewedAt)?existing.reviewedAt:now
@@ -1171,6 +1186,56 @@ function renderFriends(){
   con.innerHTML=html;
 }
 
+// ── USERNAME ─────────────────────────────────────────────────────────────────
+var _username='';
+
+async function loadUsername(){
+  var r=await sbFetch('GET','profiles?id=eq.'+uid()+'&limit=1',null);
+  if(r.data&&r.data.length>0&&r.data[0].username){
+    _username=r.data[0].username;
+    document.getElementById('username-display').textContent='Signed in as '+_username;
+  } else {
+    document.getElementById('username-display').textContent='';
+  }
+}
+
+function openUsernameDialog(){
+  var ov=document.createElement('div');ov.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:1000;display:flex;align-items:center;justify-content:center';
+  var box=document.createElement('div');box.style.cssText='background:#1a1a1a;border:1px solid #444;border-radius:12px;padding:1.5rem;display:flex;flex-direction:column;gap:12px;min-width:300px';
+  var lbl=document.createElement('div');lbl.style.cssText='font-size:14px;font-weight:500;color:#fff';lbl.textContent='Set username';
+  var sub=document.createElement('div');sub.style.cssText='font-size:12px;color:#666';sub.textContent='This is how others will see you in the Friends tab.';
+  var inp=document.createElement('input');inp.value=_username;inp.placeholder='e.g. coolperson42';inp.style.cssText='background:#1a1a1a;border:1px solid #2e2e2e;border-radius:8px;color:#e8e8e8;padding:7px 10px;width:100%;outline:none;font-size:13px';
+  var err=document.createElement('div');err.style.cssText='font-size:12px;color:#e07070;min-height:16px';
+  var row=document.createElement('div');row.style.cssText='display:flex;gap:8px;justify-content:flex-end';
+  var ok=document.createElement('button');ok.className='btn primary';ok.textContent='Save';
+  var cancel=document.createElement('button');cancel.className='btn';cancel.textContent='Cancel';
+  row.append(ok,cancel);box.append(lbl,sub,inp,err,row);ov.append(box);document.body.append(ov);
+  setTimeout(function(){inp.focus();inp.select();},50);
+  ok.onclick=async function(){
+    var val=inp.value.trim();
+    if(!val){err.textContent='Please enter a username.';return;}
+    if(val.length<2||val.length>30){err.textContent='Username must be 2-30 characters.';return;}
+    if(!/^[a-zA-Z0-9_.\- ]+$/.test(val)){err.textContent='Letters, numbers, spaces, _ - . only.';return;}
+    ok.disabled=true;ok.textContent='Saving...';
+    var r=await sbFetch('POST','profiles?on_conflict=id',{id:uid(),username:val});
+    if(r.error){err.textContent='Save failed: '+r.error.message;ok.disabled=false;ok.textContent='Save';return;}
+    _username=val;
+    document.getElementById('username-display').textContent='Signed in as '+_username;
+    ov.remove();
+  };
+  cancel.onclick=function(){ov.remove();};
+  inp.onkeydown=function(ev){if(ev.key==='Enter')ok.click();if(ev.key==='Escape')ov.remove();};
+}
+
+// ── DESCRIPTION TOGGLE ────────────────────────────────────────────────────────
+function toggleDesc(id){
+  var el=document.getElementById('desc-'+id);if(!el)return;
+  var btn=el.previousElementSibling;
+  var open=el.style.display==='block';
+  el.style.display=open?'none':'block';
+  if(btn)btn.textContent=open?'▶ Description':'▼ Description';
+}
+
 // ── TABS ──────────────────────────────────────────────────────────────────────
 function switchTab(name){
   var tabs=['browse','add','series','history','channels','todo','other','friends'];
@@ -1200,7 +1265,7 @@ window.clearSeriesForm=clearSeriesForm;window.toggleEps=toggleEps;window.addEp=a
 window.saveChannel=saveChannel;window.deleteChannel=deleteChannel;window.clearChForm=clearChForm;window.toggleChVids=toggleChVids;
 window.saveRipoff=saveRipoff;window.editRipoff=editRipoff;window.delRipoff=delRipoff;window.clearRipoffForm=clearRipoffForm;window.selectCarpet=selectCarpet;
 window.exportData=exportData;window.hToTodo=hToTodo;window.hToAdd=hToAdd;window.hDismiss=hDismiss;
-window.histHTML=histHTML;window.toggleChVids=toggleChVids;window.renderFriends=renderFriends;
+window.histHTML=histHTML;window.toggleChVids=toggleChVids;window.renderFriends=renderFriends;window.openUsernameDialog=openUsernameDialog;window.toggleDesc=toggleDesc;
 initAuth();
 
 </script>
