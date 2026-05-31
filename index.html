@@ -1173,7 +1173,7 @@ function renderFriends(){
 
 // ── TABS ──────────────────────────────────────────────────────────────────────
 function switchTab(name){
-  var tabs=['browse','add','series','history','channels','todo','other'];
+  var tabs=['browse','add','series','history','channels','todo','other','friends'];
   tabs.forEach(function(t){document.getElementById('tab-'+t).style.display=t===name?'block':'none';});
   document.querySelectorAll('.tab').forEach(function(btn,i){btn.classList.toggle('active',tabs[i]===name);});
   if(name==='browse')renderAll();
