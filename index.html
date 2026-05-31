@@ -155,6 +155,7 @@ label{font-size:11px;color:#666;display:block;margin-bottom:4px;text-transform:u
   <button class="tab" onclick="switchTab('channels')">Channels</button>
   <button class="tab" onclick="switchTab('todo')">To review</button>
   <button class="tab" onclick="switchTab('other')">Other</button>
+  <button class="tab" onclick="switchTab('friends')">Friends &#127758;</button>
 </div>
 
 <div id="tab-browse">
@@ -292,6 +293,19 @@ label{font-size:11px;color:#666;display:block;margin-bottom:4px;text-transform:u
     <div class="ur"><input type="text" id="todo-url" placeholder="YouTube URL (optional)">
       <button class="btn primary" onclick="addTodo()">Add</button></div></div>
   <div id="todo-list"></div>
+</div>
+
+<div id="tab-friends" style="display:none">
+  <div class="topbar">
+    <input type="text" id="friends-search" placeholder="Search all reviews..." oninput="renderFriends()">
+    <select id="friends-cat" onchange="renderFriends()"><option value="">All categories</option></select>
+    <select id="friends-sort" onchange="renderFriends()">
+      <option value="recent">Sort: Recent</option>
+      <option value="liked">Sort: Liked</option>
+      <option value="disliked">Sort: Disliked</option>
+    </select>
+  </div>
+  <div id="friends-container"></div>
 </div>
 
 <div id="tab-other" style="display:none">
@@ -498,8 +512,8 @@ async function loadAllData(){
     tags=[];
   }
 
-  // Seed if first time
-  if(!entries.length&&!_seeded){
+  // Seed (create prefs) if first time user
+  if(!prefs&&!_seeded){
     _seeded=true;
     await seedAll();
     return;
@@ -510,37 +524,12 @@ async function loadAllData(){
 
 // ── SEED FIRST-TIME DATA ──────────────────────────────────────────────────────
 async function seedAll(){
-  document.getElementById('cards-container').innerHTML='<div class="empty">Setting up your catalogue for the first time...</div>';
+  document.getElementById('cards-container').innerHTML='<div class="empty">Setting up your account...</div>';
   var u=uid();
 
   // Insert entries in batches
-  var entryRows=SEED.entries.map(function(e,i){return {
-    id:Date.now()+i,user_id:u,title:e.title,channel:e.channel,cat:e.cat,year:e.year,
-    rating:e.rating,review:e.review,thumb:'',url:'',published:'',description:'',
-    tags:[],liked:null,reviewed_at:null
-  };});
-
-  var todoRows=SEED.todos.map(function(t,i){return {id:Date.now()+10000+i,user_id:u,title:t,channel:'',url:''};});
-  var histRows=SEED.history.map(function(h,i){return {id:Date.now()+20000+i,user_id:u,title:h.title,url:h.url,channel:h.channel,watches:h.watches,done:false};});
-  var chRows=SEED.channels.map(function(c,i){return {id:Date.now()+30000+i,user_id:u,name:c.name,url:c.url||'',notes:'',avatar:'',descr:'',watches:c.watches||0,from_subs:c.fromSubs||false,from_history:c.fromHistory||false};});
-  var ripRows=SEED_RIPOFFS.map(function(r,i){return {id:Date.now()+40000+i,user_id:u,name:r.name,url:r.url||'',notes:r.notes,carpet:r.carpet};});
-  var seriesRows=SEED_SERIES.map(function(s,i){return {id:Date.now()+50000+i,user_id:u,title:s.title,channel:s.channel,cat:s.cat,year:s.year,rating:s.rating,review:s.review,playlist_url:s.playlistUrl,episodes:s.episodes};});
-
-  // Insert in chunks to avoid request size limits
-  async function insertChunks(table,rows,size){
-    for(var i=0;i<rows.length;i+=size){
-      var chunk=rows.slice(i,i+size);
-      var r=await sbFetch('POST',table,chunk);
-      if(r.error)console.error(table,r.error.message);
-    }
-  }
-
-  await insertChunks('entries',entryRows,50);
-  await insertChunks('todos',todoRows,50);
-  await insertChunks('history_items',histRows,50);
-  await insertChunks('channels',chRows,50);
-  await insertChunks('ripoffs',ripRows,10);
-  await insertChunks('series',seriesRows,10);
+  // New users start completely blank - no seeded data
+  // (History and channels are personal, entries/todos are personal reviews)
 
   // Save prefs
   await sbFetch('POST','user_prefs?on_conflict=user_id',{user_id:u,cats:DEFAULT_CATS,tags:[]});
@@ -1102,6 +1091,64 @@ function renderRipoffs(){
   }).join('');
 }
 
+// ── FRIENDS ──────────────────────────────────────────────────────────────────
+var friendsEntries=[];
+var friendsLoaded=false;
+
+async function loadFriendsData(){
+  if(friendsLoaded)return;
+  document.getElementById('friends-container').innerHTML='<div class="empty">Loading...</div>';
+  // Load all entries from all users (requires read-all RLS policy)
+  var r=await sbFetch('GET','entries?order=reviewed_at.desc&limit=500',null);
+  if(r.error){document.getElementById('friends-container').innerHTML='<div class="empty">Could not load. Make sure the read policy is set in Supabase.</div>';return;}
+  // Also load profiles to show usernames
+  var rp=await sbFetch('GET','profiles?select=id,username,avatar_url',null);
+  var profileMap={};
+  if(rp.data)(rp.data).forEach(function(p){profileMap[p.id]=p;});
+  friendsEntries=(r.data||[]).map(function(e){
+    var prof=profileMap[e.user_id]||{};
+    return {
+      id:e.id,title:e.title,channel:e.channel||'',cat:e.cat||'',year:e.year||'',
+      rating:e.rating||'',review:e.review||'',thumb:e.thumb||'',url:e.url||'',
+      liked:e.liked,reviewedAt:e.reviewed_at,
+      userId:e.user_id,
+      username:prof.username||'Anonymous',
+      avatarUrl:prof.avatar_url||''
+    };
+  });
+  friendsLoaded=true;
+  // Populate category filter
+  var cats=Array.from(new Set(friendsEntries.map(function(e){return e.cat;}).filter(Boolean)));
+  var catSel=document.getElementById('friends-cat');
+  catSel.innerHTML='<option value="">All categories</option>'+cats.map(function(c){return '<option value="'+esc(c)+'">'+esc(c)+'</option>';}).join('');
+  renderFriends();
+}
+
+function renderFriends(){
+  var search=document.getElementById('friends-search').value.toLowerCase();
+  var cat=document.getElementById('friends-cat').value;
+  var sort=document.getElementById('friends-sort').value;
+  var filtered=friendsEntries.filter(function(e){
+    if(cat&&e.cat!==cat)return false;
+    if(search&&(e.title+e.channel+(e.review||'')+(e.rating||'')+e.username).toLowerCase().indexOf(search)<0)return false;
+    return true;
+  });
+  if(sort==='liked') filtered=filtered.filter(function(e){return e.liked===true;});
+  else if(sort==='disliked') filtered=filtered.filter(function(e){return e.liked===false;});
+  filtered.sort(function(a,b){return (b.reviewedAt||0)-(a.reviewedAt||0);});
+  var con=document.getElementById('friends-container');
+  if(!filtered.length){con.innerHTML='<div class="empty">No reviews found.</div>';return;}
+  con.innerHTML=filtered.map(function(e){
+    var isMe=e.userId===uid();
+    var thumb=e.thumb?'<div class="thumb"><img src="'+esc(e.thumb)+'" onerror="this.parentElement.textContent=String.fromCodePoint(9654)"></div>':'<div class="thumb">&#9654;</div>';
+    var title=e.url?'<a class="ct" href="'+esc(e.url)+'" target="_blank">'+esc(e.title)+'</a>':'<span class="ct">'+esc(e.title)+'</span>';
+    var reviewedStr=e.reviewedAt?(' · '+new Date(e.reviewedAt).toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})):'';
+    var userBadge='<span style="font-size:11px;padding:2px 8px;border-radius:99px;background:'+(isMe?'#1a2a3a':'#1e1e1e')+';border:1px solid '+(isMe?'#2a4a6a':'#2a2a2a')+';color:'+(isMe?'#7ab0e8':'#888')+'">'+(isMe?'You':esc(e.username))+'</span>';
+    var lo=e.liked===true?' on':''; var dlo=e.liked===false?' on':'';
+    return '<div class="card"><div class="card-top">'+thumb+'<div class="ci">'+title+'<div class="cm">'+esc(e.channel||'')+(e.year?' · '+e.year:'')+reviewedStr+'</div>'+(e.rating?'<span class="cr">'+esc(e.rating)+'</span>':'')+'</div></div>'+(e.review?'<div class="crv">'+esc(e.review)+'</div>':'')+'<div class="ca">'+userBadge+'<button class="lbtn'+lo+'" style="cursor:default">&#128077;</button><button class="dlbtn'+dlo+'" style="cursor:default">&#128078;</button></div></div>';
+  }).join('');
+}
+
 // ── TABS ──────────────────────────────────────────────────────────────────────
 function switchTab(name){
   var tabs=['browse','add','series','history','channels','todo','other'];
@@ -1112,6 +1159,7 @@ function switchTab(name){
   if(name==='history')renderHistory();
   if(name==='channels')renderChannels();
   if(name==='other')renderRipoffs();
+  if(name==='friends'){friendsLoaded=false;loadFriendsData();}
 }
 
 // Expose all onclick handlers to global scope (required for type="module")
@@ -1130,7 +1178,7 @@ window.clearSeriesForm=clearSeriesForm;window.toggleEps=toggleEps;window.addEp=a
 window.saveChannel=saveChannel;window.deleteChannel=deleteChannel;window.clearChForm=clearChForm;window.toggleChVids=toggleChVids;
 window.saveRipoff=saveRipoff;window.editRipoff=editRipoff;window.delRipoff=delRipoff;window.clearRipoffForm=clearRipoffForm;window.selectCarpet=selectCarpet;
 window.exportData=exportData;window.hToTodo=hToTodo;window.hToAdd=hToAdd;window.hDismiss=hDismiss;
-window.histHTML=histHTML;window.toggleChVids=toggleChVids;
+window.histHTML=histHTML;window.toggleChVids=toggleChVids;window.renderFriends=renderFriends;
 initAuth();
 
 </script>
